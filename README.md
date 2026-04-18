@@ -291,6 +291,7 @@ remote-CDN fallback texture so even without NASA data it should render
 **Probe shows "—" always.** Mouse is not hitting the sphere. The
 ray-caster intersects the base sphere, not the displaced geometry, so
 hover should register anywhere on the visible disk.
+
 ---
 
 ## License
@@ -301,5 +302,5 @@ No permission is granted to use, copy, modify, distribute, sublicense,
 publish, or create derivative works from this software without prior
 written permission from the copyright holder.
 
-For permission requests, contact: [your email]
+For permission requests, please contact owner of this repository.
 
