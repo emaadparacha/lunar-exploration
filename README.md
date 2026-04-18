@@ -1,6 +1,6 @@
-# Lunar Exploration
+# Lunar Exploration 🌕
 
-View it live at **emaadparacha.com/astro/moon**.
+View it live at **[emaadparacha.com/astro/moon](https://emaadparacha.com/astro/moon)**. 🌑
 
 A 3D web app of the Moon with two views in one — optical imagery from
 the Lunar Reconnaissance Orbiter, and a physics-based thermal model
