@@ -2,7 +2,7 @@
 
 View it live at **[emaadparacha.com/astro/moon](https://emaadparacha.com/astro/moon)**. 🌑
 
-A 3D web app of the Moon with two views in one — optical imagery from
+A 3D web app of the Moon with two views in one: optical imagery from
 the Lunar Reconnaissance Orbiter, and a physics-based thermal model
 calibrated to Diviner observations. Toggle between them, toggle the sun
 on and off, and inspect anywhere with a hover probe.
@@ -11,7 +11,7 @@ Real 3D terrain (craters bulge out, mountains cast shadows on the
 limb), a thermal model with inertia lag and rock abundance, and a
 subsurface temperature probe down to 1 m.
 
-One command does everything — downloads the NASA data, starts a local
+One command does everything: downloads the NASA data, starts a local
 server, opens the viewer.
 
 ```
@@ -22,7 +22,7 @@ python3 lunar_exploration.py
 
 ## The toggles
 
-**VIEW** — Optical or Thermal. The two big buttons top-left.
+**VIEW**: Optical or Thermal. The two big buttons top-left.
 
 Tap the **VIEW** or **PARAMETERS** panel title to collapse that panel
 (the caret rotates to indicate state). On phone-sized screens both
@@ -34,32 +34,32 @@ as needed.
 - **THERMAL** replaces the imagery with a per-pixel surface temperature
   field, color-coded from 25 K (deep violet) to 400 K (white-hot).
 
-**SUN** — On or Off. The switch at the top of the right panel.
+**SUN**: On or Off. The switch at the top of the right panel.
 
-- **ON** — the sun illuminates the scene. In optical mode that means
+- **ON**: the sun illuminates the scene. In optical mode that means
   shadows and a terminator; in thermal mode that means the temperature
   field responds to where the sun currently is.
-- **OFF** — no sun. Optical mode shows a "full moon" view, every
+- **OFF**: no sun. Optical mode shows a "full moon" view, every
   feature visible, no shadows. Thermal mode switches automatically to
   **Diurnal Maximum** (the hottest each point ever gets across a full
   lunation).
 
-**3D RELIEF** — checkbox in the parameters panel. Coupled to the
+**3D RELIEF**: checkbox in the parameters panel. Coupled to the
 TERRAIN RELIEF slider.
 
-- **ON** — vertices of the sphere are displaced outward along their
+- **ON**: vertices of the sphere are displaced outward along their
   normals by the LOLA height map. Crater rims, mountain ridges, and
   basin floors have real geometry; shadows on the limb show them.
-- **OFF** — sphere stays perfectly smooth. Shading still makes the
+- **OFF**: sphere stays perfectly smooth. Shading still makes the
   surface look bumpy via normal-mapping, but the silhouette is clean.
 
-**ISOTHERMS** — checkbox in the parameters panel, thermal-only. Draws
+**ISOTHERMS**: checkbox in the parameters panel, thermal-only. Draws
 50 K anti-aliased contour lines on the thermal field. Major 100 K
 lines are emphasized.
 
 Each view has its own sub-controls that appear under the master toggle:
 
-- Optical sub-panel: imagery resolution (1K / 2K / 4K / 8K — all four
+- Optical sub-panel: imagery resolution (1K / 2K / 4K / 8K, all four
   downloaded by default; pass `--no-hires` to skip the 4K/8K TIFFs).
 - Thermal sub-panel: Instantaneous / Lunation (animated) / Diurnal Max
   / Diurnal Min / PSR Highlight.
@@ -76,7 +76,7 @@ Move the cursor anywhere on the sphere. A floating readout shows:
   subsurface depth profile at 0 cm / 1 cm / 10 cm / 1 m
 
 The subsurface profile uses a Vasavada-style exponential damping of
-the diurnal thermal wave with skin depth ≈ 5 cm — so at 1 m you'll
+the diurnal thermal wave with skin depth ≈ 5 cm, so at 1 m you'll
 see essentially the local annual-mean temperature, which varies with
 latitude and stays remarkably constant against the surface's ±200 K
 day/night swing.
@@ -96,7 +96,7 @@ python3 lunar_exploration.py --refresh     # re-download everything
 ```
 
 Hi-res is on by default. If Pillow isn't installed the launcher skips
-conversion automatically and falls back to the standard 2K mosaic — no
+conversion automatically and falls back to the standard 2K mosaic, no
 flag change required.
 
 The script caches downloads in a `textures/` folder next to itself and
@@ -113,7 +113,7 @@ principles, layered with several second-order corrections that make the
 field match Diviner observations more closely than a bare equilibrium
 model.
 
-Dayside — radiative equilibrium:
+Dayside, radiative equilibrium:
 
 ```
 absorbed = (1 − A) · S · max(cos θ, 0)      [W/m²]
@@ -132,7 +132,7 @@ instantaneously with changing insolation, so the peak temperature
 trails the subsolar point by ~15° of longitude (roughly one lunar
 hour past noon). The shader rotates the effective sun direction
 backward by this angle before the dot-product, so the hot spot sits
-east of the literal subsolar point — same as what Diviner sees.
+east of the literal subsolar point, same as what Diviner sees.
 
 **Rock abundance.** Fresh ejecta and boulder fields retain heat
 overnight because rock has higher thermal inertia than fine regolith.
@@ -142,7 +142,7 @@ nightside T by up to 28 K where rock is abundant. This is the same
 mechanism that makes Tycho's ejecta rays glow on Diviner nightside
 maps.
 
-Nightside — cools on regolith thermal-inertia timescales of Earth-days.
+Nightside, cools on regolith thermal-inertia timescales of Earth-days.
 Approximated by:
 
 ```
@@ -150,7 +150,7 @@ T_night(cos θ) = 95 K + 105 K · (1 + cos θ) + rock_idx · 28 K
 ```
 
 giving ~200 K just past the terminator (recently-set regolith) and
-~95 K near the antisolar point — matches Williams et al. (2017).
+~95 K near the antisolar point. Matches Williams et al. (2017).
 Rocky spots get an extra boost.
 
 **Subsurface thermal wave.** The hover probe shows temperature at
@@ -183,10 +183,10 @@ shader pass.
 
 ### Primary (downloaded automatically, ~830 MB full kit)
 
-- **LROC WAC 2025 color mosaic** — released Dec 2025 as 16-bit sRGB TIFF.
+- **LROC WAC 2025 color mosaic**: released Dec 2025 as 16-bit sRGB TIFF.
   Dramatically better polar detail and dynamic range than the 2019
   version. Downloaded at both 4K (59 MB) and 8K (232 MB).
-- **LOLA LDEM at 64 pixels per degree** — 473 m per pixel global
+- **LOLA LDEM at 64 pixels per degree**: 473 m per pixel global
   topography (the highest-resolution global DEM NASA publishes in a
   single mosaic, beneath SLDEM2015). 506 MB download; the launcher
   remaps the 16-bit elevation range into an 8K PNG (~25 MB cached) so
@@ -216,11 +216,11 @@ Lunar Radiometer Experiment.* Icarus 283.
 
 ## Requirements
 
-- **Python 3.6+** — only the standard library is needed for the basic
+- **Python 3.6+**: only the standard library is needed for the basic
   flow. Hi-res imagery (on by default) needs `pip install Pillow`; the
   launcher detects its absence and falls back to 2K automatically.
   `--diviner` needs `pip install numpy Pillow`.
-- **A modern browser** — Chrome, Firefox, Safari, or Edge. The viewer
+- **A modern browser**: Chrome, Firefox, Safari, or Edge. The viewer
   uses WebGL (both 1 and 2 supported), ES modules, and importmaps.
 
 ---
@@ -230,18 +230,18 @@ Lunar Radiometer Experiment.* Icarus 283.
 The thermal view now has inertia lag, rock-abundance uplift, and a
 subsurface wave, but several second-order effects are still missing:
 
-- **Horizontal heat transport** — none. Each pixel is independent.
+- **Horizontal heat transport**: none. Each pixel is independent.
   Fine for the Moon's near-vacuum surface but unrealistic for Earth.
-- **Full Vasavada/Hayne regolith model** — the real two-layer
+- **Full Vasavada/Hayne regolith model**: the real two-layer
   insulating regolith over a conductive rock basement produces
   slightly different subsurface profiles than the single-skin-depth
   exponential we use here. Good enough for intuition, not for a paper.
-- **IR self-illumination in deep craters** — a crater floor in
+- **IR self-illumination in deep craters**: a crater floor in
   geometric shadow still receives IR emission from sunlit walls, which
   slightly warms PSRs above pure-vacuum equilibrium. The 40 K PSR
   floor is calibrated to account for this empirically rather than
   physically.
-- **Actual Diviner rock-abundance product** — we infer rock abundance
+- **Actual Diviner rock-abundance product**: we infer rock abundance
   from LROC albedo and LOLA gradient, not from Diviner's two-channel
   thermal inversion. Close, not identical.
 
@@ -264,7 +264,7 @@ All data is public domain, produced by:
 
 Cite as appropriate:
 - NASA/GSFC SVS, CGI Moon Kit, <https://svs.gsfc.nasa.gov/4720>
-- Williams et al. (2017), *Icarus* 283 — for the thermal physics
+- Williams et al. (2017), *Icarus* 283, for the thermal physics
 
 ---
 
@@ -288,7 +288,7 @@ compile error, grab the text and file it as an issue. The viewer has a
 remote-CDN fallback texture so even without NASA data it should render
 *something*.
 
-**Probe shows "—" always.** Mouse is not hitting the sphere. The
+**Probe readout never changes.** Mouse is not hitting the sphere. The
 ray-caster intersects the base sphere, not the displaced geometry, so
 hover should register anywhere on the visible disk.
 
@@ -302,5 +302,4 @@ No permission is granted to use, copy, modify, distribute, sublicense,
 publish, or create derivative works from this software without prior
 written permission from the copyright holder.
 
-For permission requests, please contact owner of this repository.
-
+For permission requests, contact the owner of this repository.
