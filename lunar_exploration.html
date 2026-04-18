@@ -1,0 +1,1664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Lunar Exploration — LRO imagery · LOLA topography · Thermal model</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Major+Mono+Display&family=JetBrains+Mono:wght@300;400;600&family=Cormorant+Garamond:ital,wght@0,300;0,500;1,400&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg:           #08080c;
+    --bg-panel:     rgba(12, 14, 22, 0.78);
+    --border:       rgba(200, 210, 235, 0.12);
+    --border-strong:rgba(200, 210, 235, 0.28);
+    --ink:          #e8e9ee;
+    --ink-dim:      #8a8e9c;
+    --ink-fade:     #555866;
+    --accent:       #d4a86a;       /* main amber */
+    --accent-hot:   #ff7a5a;       /* thermal accent */
+    --accent-cold:  #5a9cff;
+    --grid:         rgba(255, 255, 255, 0.03);
+  }
+  /* when thermal mode is active, we shift accent to coral */
+  body.thermal {
+    --accent: #ff7a5a;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--ink); font-family: 'JetBrains Mono', monospace; }
+
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none; z-index: 1;
+  }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background: radial-gradient(ellipse at center, transparent 0%, rgba(0,0,0,0.6) 100%);
+    pointer-events: none; z-index: 2;
+  }
+
+  #canvas-root { position: fixed; inset: 0; z-index: 0; cursor: crosshair; }
+
+  .header {
+    position: fixed; top: 0; left: 0; right: 0;
+    padding: 18px 28px; z-index: 10;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    pointer-events: none; mix-blend-mode: difference;
+  }
+  .brand {
+    font-family: 'Major Mono Display', monospace;
+    font-size: 22px; letter-spacing: 0.12em;
+    color: var(--ink); line-height: 1;
+  }
+  .brand small {
+    display: block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; letter-spacing: 0.3em;
+    color: var(--ink-dim); margin-top: 6px; font-weight: 300;
+  }
+  .session {
+    text-align: right;
+    font-size: 10px; letter-spacing: 0.25em;
+    color: var(--ink-dim); line-height: 1.8;
+  }
+  .session b { color: var(--accent); font-weight: 400; transition: color 0.4s ease; }
+
+  .panel {
+    position: fixed;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    padding: 18px 20px; z-index: 10;
+  }
+  .panel-title {
+    font-size: 9px; letter-spacing: 0.3em;
+    color: var(--ink-dim);
+    margin-bottom: 14px;
+    display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 10px;
+    cursor: pointer; user-select: none;
+    transition: color 0.15s ease, margin-bottom 0.2s ease,
+                padding-bottom 0.2s ease, border-color 0.2s ease;
+  }
+  .panel-title:hover { color: var(--ink); }
+  .panel-title::before {
+    content: '▾'; color: var(--accent); margin-right: 6px;
+    display: inline-block;
+    transition: transform 0.25s ease, color 0.4s ease;
+  }
+  .panel-title .idx { color: var(--ink-fade); }
+  .panel.collapsed .panel-title {
+    margin-bottom: 0; border-bottom-color: transparent; padding-bottom: 0;
+  }
+  .panel.collapsed .panel-title::before { transform: rotate(-90deg); }
+  .panel.collapsed > *:not(.panel-title) { display: none !important; }
+
+  /* ═══ VIEW MODE TOGGLE (top of left panel) ═══ */
+  #panel-left { top: 80px; left: 20px; width: 260px; }
+  .mode-toggle {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+  .mode-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--ink-dim);
+    padding: 12px 8px;
+    font-family: inherit; font-size: 10px;
+    letter-spacing: 0.2em;
+    cursor: pointer; transition: all 0.25s ease;
+    position: relative;
+  }
+  .mode-btn:hover { border-color: var(--border-strong); color: var(--ink); }
+  .mode-btn.active {
+    background: rgba(212, 168, 106, 0.08);
+    border-color: var(--accent); color: var(--accent);
+  }
+  body.thermal .mode-btn.active {
+    background: rgba(255, 122, 90, 0.08);
+  }
+
+  /* sub-mode selectors (resolution OR thermal sub-mode) */
+  .sub-btn {
+    display: block; width: 100%;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--ink-dim);
+    padding: 10px 12px; margin-bottom: 6px;
+    font-family: inherit; font-size: 11px;
+    letter-spacing: 0.15em; text-align: left;
+    cursor: pointer; transition: all 0.25s ease;
+    position: relative;
+  }
+  .sub-btn:hover:not(:disabled) { border-color: var(--border-strong); color: var(--ink); }
+  .sub-btn.active {
+    background: rgba(212, 168, 106, 0.08);
+    border-color: var(--accent); color: var(--accent);
+  }
+  body.thermal .sub-btn.active {
+    background: rgba(255, 122, 90, 0.08);
+  }
+  .sub-btn.active::before {
+    content: ''; position: absolute;
+    left: -1px; top: -1px; bottom: -1px; width: 3px;
+    background: var(--accent);
+  }
+  .sub-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .sub-btn .lbl {
+    display: inline-block; width: 36px;
+    color: var(--ink-fade); font-size: 9px;
+  }
+  .sub-btn.active .lbl { color: var(--accent); }
+
+  .caption {
+    font-size: 10px; color: var(--ink-fade);
+    line-height: 1.6; margin-top: 12px;
+    padding-top: 12px; border-top: 1px dashed var(--border);
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic; font-size: 13px;
+    min-height: 52px;
+  }
+
+  /* ═══ CONTROLS (right panel) ═══ */
+  #panel-right { top: 80px; right: 20px; width: 290px; }
+
+  /* sun toggle — prominent switch */
+  .sun-switch {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: all 0.25s;
+  }
+  .sun-switch:hover { border-color: var(--border-strong); }
+  .sun-switch.on { border-color: var(--accent); background: rgba(212, 168, 106, 0.06); }
+  body.thermal .sun-switch.on { background: rgba(255, 122, 90, 0.06); }
+  .sun-switch-label {
+    font-size: 10px; letter-spacing: 0.2em;
+    color: var(--ink-dim);
+  }
+  .sun-switch.on .sun-switch-label { color: var(--accent); }
+  .sun-switch-state {
+    font-size: 10px; letter-spacing: 0.15em;
+    color: var(--ink-fade);
+  }
+  .sun-switch.on .sun-switch-state { color: var(--accent); }
+  .sun-icon {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    border: 1px solid var(--ink-fade);
+    margin-right: 10px;
+    transition: all 0.3s;
+  }
+  .sun-switch.on .sun-icon {
+    background: var(--accent);
+    border-color: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+  }
+
+  .control-row { margin-bottom: 16px; }
+  .control-row.disabled { opacity: 0.3; pointer-events: none; }
+  .control-row.hidden { display: none; }
+  .control-row label {
+    display: flex; justify-content: space-between;
+    font-size: 10px; letter-spacing: 0.18em;
+    color: var(--ink-dim); margin-bottom: 8px;
+  }
+  .control-row label .val {
+    color: var(--accent); font-variant-numeric: tabular-nums;
+    transition: color 0.4s ease;
+  }
+  input[type="range"] {
+    -webkit-appearance: none; width: 100%;
+    background: transparent; height: 18px;
+  }
+  input[type="range"]::-webkit-slider-runnable-track { height: 2px; background: var(--border-strong); }
+  input[type="range"]::-moz-range-track { height: 2px; background: var(--border-strong); }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 12px; height: 12px;
+    background: var(--accent); border-radius: 0;
+    margin-top: -5px; cursor: pointer; transform: rotate(45deg);
+    transition: background 0.4s ease;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 12px; height: 12px;
+    background: var(--accent); border: none; border-radius: 0;
+    cursor: pointer; transform: rotate(45deg);
+  }
+
+  .checkbox-row {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 10px; letter-spacing: 0.18em;
+    color: var(--ink-dim); margin-bottom: 10px;
+    cursor: pointer;
+  }
+  .checkbox-row input { accent-color: var(--accent); }
+  .checkbox-row:hover { color: var(--ink); }
+  .checkbox-row .hint {
+    font-size: 9px; letter-spacing: 0.12em;
+    color: var(--ink-fade); text-transform: none;
+    margin-left: auto; font-style: italic;
+  }
+
+  .file-upload {
+    display: block;
+    border: 1px dashed var(--border-strong);
+    padding: 10px; text-align: center;
+    font-size: 9px; letter-spacing: 0.2em;
+    color: var(--ink-dim); cursor: pointer;
+    transition: all 0.2s; margin-top: 8px;
+  }
+  .file-upload:hover { border-color: var(--accent); color: var(--accent); }
+  .file-upload input { display: none; }
+
+  /* ═══ BOTTOM PANEL ═══ */
+  #panel-bottom {
+    bottom: 20px; left: 20px; right: 20px;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 2fr;
+    gap: 28px; align-items: center;
+  }
+  .readout-item { border-left: 1px solid var(--border); padding-left: 16px; }
+  .readout-item:first-child { border-left: none; padding-left: 0; }
+  .readout-label {
+    font-size: 9px; letter-spacing: 0.25em;
+    color: var(--ink-dim); margin-bottom: 4px;
+  }
+  .readout-val {
+    font-size: 15px; color: var(--ink);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.05em;
+  }
+  .readout-val .unit {
+    font-size: 10px; color: var(--ink-fade); margin-left: 4px;
+  }
+  .readout-val.cold { color: var(--accent-cold); }
+  .readout-val.hot  { color: var(--accent-hot); }
+
+  /* thermal legend — matches shader ramp */
+  .legend-wrap { width: 100%; }
+  .legend-bar {
+    width: 100%; height: 14px;
+    background: linear-gradient(90deg,
+      #1a0a3a 0%,
+      #3b2484 6%,
+      #2a4fb5 14%,
+      #1f77c4 22%,
+      #22a6b5 33%,
+      #45c680 47%,
+      #c6c840 64%,
+      #e68a22 80%,
+      #d93820 94%,
+      #ffeecc 100%);
+    border: 1px solid var(--border-strong);
+  }
+  .legend-ticks {
+    display: flex; justify-content: space-between;
+    width: 100%;
+    font-size: 9px; color: var(--ink-dim);
+    letter-spacing: 0.1em; margin-top: 4px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* probe readout — floats by cursor */
+  #probe {
+    position: fixed;
+    pointer-events: none; z-index: 9;
+    background: rgba(12, 14, 22, 0.92);
+    border: 1px solid var(--accent);
+    padding: 8px 12px;
+    font-size: 10px; letter-spacing: 0.1em;
+    color: var(--ink);
+    line-height: 1.8;
+    display: none;
+    min-width: 160px;
+    transition: border-color 0.4s ease;
+  }
+  #probe.show { display: block; }
+  #probe .t {
+    font-size: 22px; color: var(--accent);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em; font-weight: 300;
+    transition: color 0.4s ease;
+  }
+  #probe .t.cold { color: var(--accent-cold); }
+  #probe .t .unit { font-size: 11px; color: var(--ink-dim); margin-left: 3px; }
+  #probe .coord { color: var(--ink-dim); font-size: 9px; }
+  #probe .probe-depth {
+    margin-top: 6px; padding-top: 6px;
+    border-top: 1px solid rgba(212, 168, 106, 0.25);
+    font-size: 9px; line-height: 1.5;
+  }
+  #probe .probe-depth-title {
+    color: var(--ink-fade); letter-spacing: 0.15em;
+    margin-bottom: 3px;
+  }
+  #probe .probe-depth-row {
+    display: flex; justify-content: space-between;
+    color: var(--ink-dim); font-variant-numeric: tabular-nums;
+  }
+  #probe .probe-depth-row span:last-child { color: var(--ink); }
+
+  /* corner markers */
+  .marker {
+    position: fixed; width: 16px; height: 16px;
+    border: 1px solid var(--accent);
+    pointer-events: none; z-index: 5; opacity: 0.5;
+    transition: border-color 0.4s ease;
+  }
+  .marker.tl { top: 10px; left: 10px; border-right: none; border-bottom: none; }
+  .marker.tr { top: 10px; right: 10px; border-left: none; border-bottom: none; }
+  .marker.bl { bottom: 10px; left: 10px; border-right: none; border-top: none; }
+  .marker.br { bottom: 10px; right: 10px; border-left: none; border-top: none; }
+
+  /* loading splash */
+  #loading {
+    position: fixed; inset: 0;
+    background: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100; flex-direction: column; gap: 20px;
+  }
+  .spinner {
+    width: 40px; height: 40px;
+    border: 1px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 1.2s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #loading-text {
+    font-size: 10px; letter-spacing: 0.3em; color: var(--ink-dim);
+  }
+  #loading-sub {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic; font-size: 13px;
+    color: var(--ink-fade);
+  }
+
+  .toast {
+    position: fixed; bottom: 110px; left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-panel);
+    border: 1px solid var(--border-strong);
+    border-left: 3px solid var(--accent);
+    padding: 10px 16px;
+    font-size: 10px; letter-spacing: 0.15em;
+    color: var(--ink); z-index: 20;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.3s;
+  }
+  .toast.show { opacity: 1; }
+
+  @media (max-width: 900px) {
+    #panel-left, #panel-right { width: calc(50% - 30px); }
+    #panel-bottom { grid-template-columns: 1fr 1fr; gap: 16px; }
+    .legend-wrap { grid-column: 1 / -1; }
+  }
+
+  /* Phone / narrow tablet — side panels become collapsible drawers.
+     Collapsed, they shrink to a tap target in the corner; expanded, they
+     overlay most of the width so all the controls fit comfortably. */
+  @media (max-width: 620px) {
+    .header { padding: 12px 14px; }
+    .brand { font-size: 15px; }
+    .brand small { font-size: 8px; letter-spacing: 0.2em; margin-top: 4px; }
+    .session { font-size: 8px; letter-spacing: 0.18em; }
+
+    #panel-left, #panel-right {
+      top: 76px;
+      width: 144px;
+      padding: 11px 13px;
+      max-height: calc(100vh - 180px);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+    #panel-left  { left: 12px; }
+    #panel-right { right: 12px; }
+    #panel-left.collapsed, #panel-right.collapsed {
+      width: auto; min-width: 104px;
+      overflow: hidden;
+    }
+    #panel-left:not(.collapsed), #panel-right:not(.collapsed) {
+      width: calc(100vw - 30px);
+      max-width: 340px;
+    }
+    #panel-bottom {
+      left: 12px; right: 12px;
+      padding: 10px 14px;
+      grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+      gap: 10px;
+    }
+    .marker { width: 14px; height: 14px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <div id="loading-text">INITIALIZING LUNAR SURFACE</div>
+  <div id="loading-sub">loading LRO imagery + LOLA topography…</div>
+</div>
+
+<div class="marker tl"></div>
+<div class="marker tr"></div>
+<div class="marker bl"></div>
+<div class="marker br"></div>
+
+<div id="canvas-root"></div>
+
+<header class="header">
+  <div class="brand">
+    lvnar exploration
+    <small>LRO WAC · LOLA · DIVINER-CALIBRATED · v2.0</small>
+  </div>
+  <div class="session">
+    <div>SESSION <b id="session-id">L-0000</b></div>
+    <div>UTC <b id="utc-time">00:00:00</b></div>
+    <div>VIEW <b id="view-label">OPTICAL</b></div>
+  </div>
+</header>
+
+<!-- ═══ LEFT PANEL: VIEW MODE + SUB-MODE ═══ -->
+<div class="panel" id="panel-left">
+  <div class="panel-title">VIEW <span class="idx">01/02</span></div>
+
+  <!-- Master toggle: optical / thermal -->
+  <div class="mode-toggle">
+    <button class="mode-btn active" data-view="optical">OPTICAL</button>
+    <button class="mode-btn" data-view="thermal">THERMAL</button>
+  </div>
+
+  <!-- Optical: resolution selector -->
+  <div id="sub-optical">
+    <button class="sub-btn" data-tex="lroc_color_poles_1k.jpg"><span class="lbl">1K</span>LROC · 2019</button>
+    <button class="sub-btn active" data-tex="lroc_color_2k.jpg"><span class="lbl">2K</span>LROC · baseline</button>
+    <button class="sub-btn" data-tex="lroc_color_16bit_srgb_4k.jpg"><span class="lbl">4K</span>LROC · 2025</button>
+    <button class="sub-btn" data-tex="lroc_color_16bit_srgb_8k.jpg"><span class="lbl">8K</span>LROC · 2025</button>
+  </div>
+
+  <!-- Thermal: mode selector -->
+  <div id="sub-thermal" style="display:none">
+    <button class="sub-btn active" data-thermal="instant"><span class="lbl">01</span>INSTANTANEOUS</button>
+    <button class="sub-btn" data-thermal="lunation"><span class="lbl">02</span>LUNATION</button>
+    <button class="sub-btn" data-thermal="max"><span class="lbl">03</span>DIURNAL MAX</button>
+    <button class="sub-btn" data-thermal="min"><span class="lbl">04</span>DIURNAL MIN</button>
+    <button class="sub-btn" data-thermal="psr"><span class="lbl">05</span>PSR HIGHLIGHT</button>
+  </div>
+
+  <div class="caption" id="caption">
+    LROC Wide Angle Camera mosaic on LOLA topography. Sun position drives the illumination in real time.
+  </div>
+</div>
+
+<!-- ═══ RIGHT PANEL: CONTROLS ═══ -->
+<div class="panel" id="panel-right">
+  <div class="panel-title">PARAMETERS <span class="idx">02/02</span></div>
+
+  <!-- Sun on/off switch -->
+  <div class="sun-switch on" id="sun-switch">
+    <div style="display:flex; align-items:center">
+      <span class="sun-icon"></span>
+      <span class="sun-switch-label">SUN</span>
+    </div>
+    <span class="sun-switch-state" id="sun-state">ON</span>
+  </div>
+
+  <div class="control-row sun-dependent" id="cr-sunlon">
+    <label>SUN LONGITUDE <span class="val" id="sun-lon-val">+030°</span></label>
+    <input type="range" id="sun-lon" min="-180" max="180" value="30" step="1">
+  </div>
+  <div class="control-row sun-dependent" id="cr-sunlat">
+    <label>SUN LATITUDE <span class="val" id="sun-lat-val">+01°</span></label>
+    <input type="range" id="sun-lat" min="-15" max="15" value="1" step="1">
+  </div>
+  <div class="control-row hidden" id="cr-lunspeed">
+    <label>LUNATION RATE <span class="val" id="lun-val">60s/day</span></label>
+    <input type="range" id="lun-speed" min="0" max="100" value="50" step="1">
+  </div>
+  <div class="control-row">
+    <label>TERRAIN RELIEF <span class="val" id="disp-val">×3.0</span></label>
+    <input type="range" id="disp" min="0" max="50" value="15" step="1">
+  </div>
+  <label class="checkbox-row">
+    <input type="checkbox" id="chk-relief3d" checked> 3D RELIEF <span class="hint">· craters bulge out</span>
+  </label>
+  <div class="control-row">
+    <label>CAMERA SPIN <span class="val" id="rot-val">FROZEN</span></label>
+    <input type="range" id="rot" min="0" max="20" value="0" step="1">
+  </div>
+  <div class="control-row">
+    <label>CAM DISTANCE <span class="val" id="dist-val">3.2 R☾</span></label>
+    <input type="range" id="dist" min="135" max="780" value="320" step="5">
+  </div>
+
+  <label class="checkbox-row">
+    <input type="checkbox" id="chk-stars" checked> STARFIELD
+  </label>
+  <label class="checkbox-row">
+    <input type="checkbox" id="chk-grid"> GRATICULE
+  </label>
+  <label class="checkbox-row">
+    <input type="checkbox" id="chk-apollo"> APOLLO SITES
+  </label>
+  <label class="checkbox-row thm-dependent" style="display:none">
+    <input type="checkbox" id="chk-iso"> ISOTHERMS <span class="hint">· 50 K lines</span>
+  </label>
+
+  <label class="file-upload" id="custom-wrap">
+    LOAD CUSTOM MAP ▸
+    <input type="file" id="custom-texture" accept="image/*">
+  </label>
+</div>
+
+<!-- ═══ BOTTOM PANEL: READOUT + LEGEND ═══ -->
+<div class="panel" id="panel-bottom">
+  <!-- Optical readouts (shown when optical mode) -->
+  <div class="readout-item opt-readout">
+    <div class="readout-label">RADIUS</div>
+    <div class="readout-val">1,737.4<span class="unit">km</span></div>
+  </div>
+  <div class="readout-item opt-readout">
+    <div class="readout-label">TEXTURE</div>
+    <div class="readout-val" id="rd-tex">2K · 2025</div>
+  </div>
+  <div class="readout-item opt-readout">
+    <div class="readout-label">DISPLACEMENT</div>
+    <div class="readout-val" id="rd-disp">LOLA LDEM</div>
+  </div>
+  <div class="readout-item opt-readout">
+    <div class="readout-label">CAM ALTITUDE</div>
+    <div class="readout-val" id="rd-alt">3.2<span class="unit">R☾</span></div>
+  </div>
+
+  <!-- Thermal readouts (shown when thermal mode) -->
+  <div class="readout-item thm-readout" style="display:none">
+    <div class="readout-label">T<sub>MAX</sub> GLOBAL</div>
+    <div class="readout-val hot" id="rd-tmax">—<span class="unit">K</span></div>
+  </div>
+  <div class="readout-item thm-readout" style="display:none">
+    <div class="readout-label">T<sub>MIN</sub> GLOBAL</div>
+    <div class="readout-val cold" id="rd-tmin">—<span class="unit">K</span></div>
+  </div>
+  <div class="readout-item thm-readout" style="display:none">
+    <div class="readout-label">SUB-SOLAR</div>
+    <div class="readout-val" id="rd-sub">—</div>
+  </div>
+  <div class="readout-item legend-wrap thm-readout" style="display:none">
+    <div class="readout-label">TEMPERATURE SCALE · KELVIN</div>
+    <div class="legend-bar"></div>
+    <div class="legend-ticks">
+      <span>25</span><span>100</span><span>175</span><span>250</span><span>325</span><span>400</span>
+    </div>
+  </div>
+</div>
+
+<!-- hover probe -->
+<div id="probe">
+  <div class="coord" id="probe-coord">lat — · lon —</div>
+  <div class="t" id="probe-t">— <span class="unit">K</span></div>
+  <div class="coord" id="probe-extra"></div>
+  <div class="probe-depth" id="probe-depth" style="display:none">
+    <div class="probe-depth-title">SUBSURFACE T</div>
+    <div class="probe-depth-row"><span>0 cm</span><span id="pd-0">—</span></div>
+    <div class="probe-depth-row"><span>1 cm</span><span id="pd-1">—</span></div>
+    <div class="probe-depth-row"><span>10 cm</span><span id="pd-10">—</span></div>
+    <div class="probe-depth-row"><span>1 m</span><span id="pd-100">—</span></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ══════════════════════════════════════════════════════════════════════
+//  LUNAR EXPLORATION — one app, two views
+//
+//  A single ShaderMaterial with a uMode integer drives everything:
+//    0 = OPTICAL, sun on (Lambertian shading + earthshine)
+//    1 = OPTICAL, sun off (fully-lit moon)
+//    2 = THERMAL, instantaneous
+//    3 = THERMAL, lunation (animated sun)
+//    4 = THERMAL, diurnal maximum
+//    5 = THERMAL, diurnal minimum
+//    6 = THERMAL, PSR highlight
+//
+//  Thermal physics (dayside):
+//    T = [(1-A)·S·cos θ / (ε·σ)]^(1/4)
+//    with S=1361 W/m², ε=0.95, σ=5.67e-8, A derived from LROC luminance.
+//  Nightside (Diviner-calibrated cooling curve, Williams et al. 2017):
+//    T_night(cos θ) = 95 + 105·(1 + cos θ)    for cos θ ∈ [-1, 0]
+//
+//  Normal-bumping uses finite differences on the LOLA displacement map
+//  so crater walls self-shadow properly — the mechanism by which real
+//  polar PSRs stay cold.
+// ══════════════════════════════════════════════════════════════════════
+
+const TEXTURE_DIR   = './textures/';
+const MANIFEST_PATH = TEXTURE_DIR + 'manifest.json';
+const FALLBACK_URL  = 'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/textures/planets/moon_1024.jpg';
+// Preference order for the displacement map — ldem_64 (64 ppd, 473 m/px)
+// is the headline terrain asset, with graceful fallback to coarser maps.
+const DISP_CANDIDATES = ['ldem_64.png', 'ldem_16.png', 'ldem_3_8bit.jpg'];
+const MOON_RADIUS   = 1;
+const SEGMENTS      = 1024;       // ~2M triangles — shows individual crater rims
+
+// ─── state ────────────────────────────────────────────────────────────
+const state = {
+  view:           'optical',   // 'optical' | 'thermal'
+  sunOn:          true,
+  thermalSub:     'instant',   // instant | lunation | max | min | psr
+  textureKey:     'lroc_color_2k.jpg',
+};
+
+// ─── scene / renderer / camera ────────────────────────────────────────
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.01, 1000);
+camera.position.set(0, 0.35, 3.2);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.setClearColor(0x000000, 0);
+document.getElementById('canvas-root').appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.minDistance   = 1.3;
+controls.maxDistance   = 8;
+controls.zoomSpeed     = 0.45;
+
+// ─── starfield ────────────────────────────────────────────────────────
+function buildStars() {
+  const g = new THREE.BufferGeometry();
+  const n = 6000;
+  const pos = new Float32Array(n * 3), col = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const u = Math.random(), v = Math.random();
+    const theta = 2 * Math.PI * u, phi = Math.acos(2 * v - 1);
+    const r = 80 + Math.random() * 40;
+    pos[i*3]   = r * Math.sin(phi) * Math.cos(theta);
+    pos[i*3+1] = r * Math.cos(phi);
+    pos[i*3+2] = r * Math.sin(phi) * Math.sin(theta);
+    const c = 0.5 + Math.random() * 0.5;
+    col[i*3] = c; col[i*3+1] = c; col[i*3+2] = c * (0.9 + Math.random() * 0.1);
+  }
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('color',    new THREE.BufferAttribute(col, 3));
+  const m = new THREE.PointsMaterial({
+    size: 0.15, vertexColors: true, sizeAttenuation: true,
+    transparent: true, opacity: 0.85, depthWrite: false
+  });
+  return new THREE.Points(g, m);
+}
+const stars = buildStars();
+scene.add(stars);
+
+// ─── graticule ────────────────────────────────────────────────────────
+function buildGraticule() {
+  const group = new THREE.Group();
+  const mat = new THREE.LineBasicMaterial({ color: 0xd4a86a, transparent: true, opacity: 0.22 });
+  const R = MOON_RADIUS * 1.003;
+  for (let lon = 0; lon < 360; lon += 30) {
+    const pts = [];
+    for (let lat = -90; lat <= 90; lat += 2) {
+      const latR = THREE.MathUtils.degToRad(lat);
+      const lonR = THREE.MathUtils.degToRad(lon);
+      pts.push(new THREE.Vector3(
+         R * Math.cos(lonR) * Math.cos(latR),
+         R * Math.sin(latR),
+        -R * Math.sin(lonR) * Math.cos(latR)
+      ));
+    }
+    group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat));
+  }
+  for (let lat = -60; lat <= 60; lat += 30) {
+    const pts = [];
+    for (let lon = 0; lon <= 360; lon += 2) {
+      const latR = THREE.MathUtils.degToRad(lat);
+      const lonR = THREE.MathUtils.degToRad(lon);
+      pts.push(new THREE.Vector3(
+         R * Math.cos(lonR) * Math.cos(latR),
+         R * Math.sin(latR),
+        -R * Math.sin(lonR) * Math.cos(latR)
+      ));
+    }
+    group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat));
+  }
+  return group;
+}
+const graticule = buildGraticule();
+graticule.visible = false;
+scene.add(graticule);
+
+// ─── Apollo landing sites ────────────────────────────────────────────
+const APOLLO_SITES = [
+  { name: 'Apollo 11', lat: 0.67,  lon: 23.47,  region: 'Mare Tranquillitatis' },
+  { name: 'Apollo 12', lat: -3.01, lon: -23.42, region: 'Oceanus Procellarum' },
+  { name: 'Apollo 14', lat: -3.67, lon: -17.47, region: 'Fra Mauro'            },
+  { name: 'Apollo 15', lat: 26.13, lon: 3.63,   region: 'Hadley Rille'         },
+  { name: 'Apollo 16', lat: -8.97, lon: 15.50,  region: 'Descartes Highlands'  },
+  { name: 'Apollo 17', lat: 20.19, lon: 30.77,  region: 'Taurus-Littrow'       },
+];
+const apolloGroup = new THREE.Group();
+APOLLO_SITES.forEach(site => {
+  const lat = THREE.MathUtils.degToRad(site.lat);
+  const lon = THREE.MathUtils.degToRad(site.lon);
+  const R = MOON_RADIUS * 1.035;
+  // Local pin position. apolloGroup is rotated by -π/2 around Y to match
+  // the moon mesh, so after that rotation the world position becomes
+  // (sin(L)cos(B), sin(B), cos(L)cos(B)) — the texture's actual location.
+  const pos = new THREE.Vector3(
+     R * Math.cos(lon) * Math.cos(lat),
+     R * Math.sin(lat),
+    -R * Math.sin(lon) * Math.cos(lat)
+  );
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(0.02, 0.028, 24),
+    new THREE.MeshBasicMaterial({ color: 0xffb36a, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false })
+  );
+  ring.position.copy(pos);
+  ring.lookAt(new THREE.Vector3(0, 0, 0));
+  apolloGroup.add(ring);
+  const dot = new THREE.Mesh(
+    new THREE.SphereGeometry(0.008, 12, 12),
+    new THREE.MeshBasicMaterial({ color: 0xffb36a })
+  );
+  dot.position.copy(pos);
+  apolloGroup.add(dot);
+});
+apolloGroup.visible = false;
+scene.add(apolloGroup);
+
+// ══════════════════════════════════════════════════════════════════════
+//  SHADER — one material for both optical and thermal
+// ══════════════════════════════════════════════════════════════════════
+const moonMat = new THREE.ShaderMaterial({
+  uniforms: {
+    uAlbedoMap:    { value: null },
+    uHasAlbedo:    { value: 0.0 },
+    uDispMap:      { value: null },
+    uHasDisp:      { value: 0.0 },
+    uSunDir:       { value: new THREE.Vector3(0.5, 0.02, 0.87) },
+    uDispScale:    { value: 0.006 },   // drives fragment-shader shading bumps
+    uVertexRelief: { value: 0.055 },   // drives vertex-displacement magnitude (0 → flat)
+    uMode:         { value: 0 },
+    uTexelSize:    { value: new THREE.Vector2(1/1024, 1/512) },
+    uThermalLag:   { value: 0.26 },    // ~15° eastward lag of peak T
+    uIsotherms:    { value: 0.0 },     // 0 = off, 1 = on
+  },
+  vertexShader: /* glsl */`
+    uniform sampler2D uDispMap;
+    uniform float uHasDisp;
+    uniform float uVertexRelief;
+    varying vec2 vUv;
+    varying vec3 vSphereN;
+    varying float vElev;
+    void main() {
+      vUv = uv;
+      vec3 n = normalize(normal);
+      vSphereN = normalize((modelMatrix * vec4(n, 0.0)).xyz);
+      float elev = 0.0;
+      if (uHasDisp > 0.5) {
+        elev = texture2D(uDispMap, uv).r - 0.5;
+      }
+      vElev = elev;
+      vec3 displaced = position + n * elev * uVertexRelief;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);
+    }
+  `,
+  fragmentShader: /* glsl */`
+    #ifdef GL_OES_standard_derivatives
+    #extension GL_OES_standard_derivatives : enable
+    #endif
+    precision highp float;
+
+    uniform sampler2D uAlbedoMap;
+    uniform float     uHasAlbedo;
+    uniform sampler2D uDispMap;
+    uniform float     uHasDisp;
+    uniform vec3      uSunDir;
+    uniform float     uDispScale;
+    uniform int       uMode;
+    uniform vec2      uTexelSize;
+    uniform float     uThermalLag;
+    uniform float     uIsotherms;
+
+    varying vec2  vUv;
+    varying vec3  vSphereN;
+    varying float vElev;
+
+    const float SOLAR_CONSTANT = 1361.0;
+    const float SIGMA_EPS      = 0.95 * 5.67e-8;
+    const float T_NIGHT_MIN    = 95.0;
+    const float T_NIGHT_TERM   = 200.0;
+    const float T_PSR          = 40.0;
+
+    // Richer color ramp — more stops at the cold end so PSRs & nightside
+    // stratify visually, and a warm-white highlight near the peak.
+    vec3 thermalRamp(float t) {
+      t = clamp(t, 0.0, 1.0);
+      vec3 c0  = vec3(0.04, 0.01, 0.11);  //   25K  (deep PSR)
+      vec3 c1  = vec3(0.10, 0.04, 0.23);  //   60K
+      vec3 c2  = vec3(0.20, 0.08, 0.38);  //   95K  (nightside floor)
+      vec3 c3  = vec3(0.23, 0.14, 0.56);  //  130K
+      vec3 c4  = vec3(0.16, 0.31, 0.72);  //  170K
+      vec3 c5  = vec3(0.12, 0.47, 0.77);  //  210K  (predawn)
+      vec3 c6  = vec3(0.13, 0.65, 0.71);  //  245K
+      vec3 c7  = vec3(0.27, 0.78, 0.50);  //  280K
+      vec3 c8  = vec3(0.66, 0.82, 0.30);  //  310K
+      vec3 c9  = vec3(0.92, 0.72, 0.19);  //  340K
+      vec3 c10 = vec3(0.94, 0.45, 0.12);  //  370K
+      vec3 c11 = vec3(0.88, 0.22, 0.14);  //  395K
+      vec3 c12 = vec3(1.00, 0.93, 0.82);  //  400K+ (hot highlight)
+      float s = t * 12.0;
+      int   i = int(floor(s));
+      float f = fract(s);
+      if (i == 0)  return mix(c0,  c1,  f);
+      if (i == 1)  return mix(c1,  c2,  f);
+      if (i == 2)  return mix(c2,  c3,  f);
+      if (i == 3)  return mix(c3,  c4,  f);
+      if (i == 4)  return mix(c4,  c5,  f);
+      if (i == 5)  return mix(c5,  c6,  f);
+      if (i == 6)  return mix(c6,  c7,  f);
+      if (i == 7)  return mix(c7,  c8,  f);
+      if (i == 8)  return mix(c8,  c9,  f);
+      if (i == 9)  return mix(c9,  c10, f);
+      if (i == 10) return mix(c10, c11, f);
+      return mix(c11, c12, f);
+    }
+
+    float albedoFrom(vec3 rgb) {
+      float L = 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b;
+      return 0.04 + 0.22 * L;
+    }
+
+    float T_equilibrium(float cosTheta, float A) {
+      if (cosTheta <= 0.0) return 0.0;
+      return pow((1.0 - A) * SOLAR_CONSTANT * cosTheta / SIGMA_EPS, 0.25);
+    }
+
+    float T_nightside(float cosTheta, float rockIdx) {
+      // Base Williams+ 2017 curve, with a rock-abundance uplift: high-rock
+      // pixels (fresh ejecta, boulder fields) retain +10-40 K past sunset.
+      float base = T_NIGHT_MIN + (T_NIGHT_TERM - T_NIGHT_MIN) * max(0.0, 1.0 + cosTheta);
+      return base + rockIdx * 28.0;
+    }
+
+    // Rotate a vector by angle around the world Y axis (lunar rotation axis).
+    vec3 rotY(vec3 v, float a) {
+      float c = cos(a), s = sin(a);
+      return vec3(v.x * c + v.z * s, v.y, -v.x * s + v.z * c);
+    }
+
+    // Estimate local roughness & rock abundance from displacement gradient.
+    // Rougher terrain → more exposed rock → warmer nights & cooler shadowed
+    // pits during day. Cheap proxy for Bandfield-style rock maps.
+    float roughIndex(vec2 uv) {
+      if (uHasDisp < 0.5) return 0.0;
+      float hL = texture2D(uDispMap, uv - vec2(uTexelSize.x, 0.0)).r;
+      float hR = texture2D(uDispMap, uv + vec2(uTexelSize.x, 0.0)).r;
+      float hD = texture2D(uDispMap, uv - vec2(0.0, uTexelSize.y)).r;
+      float hU = texture2D(uDispMap, uv + vec2(0.0, uTexelSize.y)).r;
+      vec2  g  = vec2(hR - hL, hU - hD);
+      return clamp(length(g) * 80.0, 0.0, 1.0);
+    }
+
+    float surfaceTemp(vec3 N, vec3 S, float A, float rockIdx) {
+      // Apply thermal inertia lag: peak T sits ~15° east of subsolar.
+      vec3  Seff  = rotY(S, -uThermalLag);
+      float c     = dot(N, Seff);
+      float Tday  = T_equilibrium(c, A);
+      // Rough terrain has lower effective cosine (self-shadowing) — nudge
+      // down slightly at grazing sun, more at steep angles.
+      Tday       *= (1.0 - rockIdx * 0.04 * (1.0 - max(c, 0.0)));
+      float Tnight = T_nightside(min(c, 0.0), rockIdx);
+      float b      = smoothstep(-0.03, 0.08, c);
+      return mix(Tnight, Tday, b);
+    }
+
+    vec3 bumpedNormal(vec3 Nsph, vec2 uv) {
+      if (uHasDisp < 0.5) return Nsph;
+      vec3 east, north;
+      if (abs(Nsph.y) > 0.999) {
+        east  = vec3(1.0, 0.0, 0.0);
+        north = cross(Nsph, east);
+      } else {
+        east  = normalize(cross(vec3(0.0, 1.0, 0.0), Nsph));
+        north = cross(Nsph, east);
+      }
+      float hL = texture2D(uDispMap, uv - vec2(uTexelSize.x, 0.0)).r;
+      float hR = texture2D(uDispMap, uv + vec2(uTexelSize.x, 0.0)).r;
+      float hD = texture2D(uDispMap, uv - vec2(0.0, uTexelSize.y)).r;
+      float hU = texture2D(uDispMap, uv + vec2(0.0, uTexelSize.y)).r;
+      float bump = 40.0 * uDispScale;
+      return normalize(
+        Nsph - east * (hR - hL) * bump - north * (hU - hD) * bump
+      );
+    }
+
+    // Anti-aliased 50-K isotherm lines drawn on top of the thermal ramp.
+    vec3 applyIsotherms(vec3 col, float T) {
+      if (uIsotherms < 0.5) return col;
+      float period = 50.0;
+      float d      = abs(fract(T / period) - 0.5) * period;
+      #ifdef GL_OES_standard_derivatives
+        float w    = fwidth(T) * 0.5 + 0.75;
+      #else
+        float w    = 1.0;
+      #endif
+      float line   = 1.0 - smoothstep(0.0, w, d);
+      // emphasize the 100-K multiples (major isotherms)
+      float major  = step(abs(fract(T / 100.0) - 0.5) * 100.0, w * 1.2) * 0.35;
+      return mix(col, vec3(1.0, 0.96, 0.84), line * (0.55 + major));
+    }
+
+    void main() {
+      vec3 Nsph = normalize(vSphereN);
+      vec3 N    = bumpedNormal(Nsph, vUv);
+      vec3 S    = normalize(uSunDir);
+
+      // sample albedo
+      float A = 0.12;
+      vec3 albedoRGB = vec3(0.5);
+      if (uHasAlbedo > 0.5) {
+        albedoRGB = texture2D(uAlbedoMap, vUv).rgb;
+        A = albedoFrom(albedoRGB);
+      }
+
+      // rock / roughness index: bright ejecta + rough terrain → higher
+      float rIdx = clamp(
+        smoothstep(0.09, 0.17, A) * 0.7 + roughIndex(vUv) * 0.5,
+        0.0, 1.0
+      );
+
+      // ── OPTICAL WITH SUN ──
+      // Low fill, mild contrast curve on the lit term — produces the sharp
+      // terminator and deep crater shadows of the reference lunar photos.
+      if (uMode == 0) {
+        float lit = max(dot(N, S), 0.0);
+        float fill = 0.018;
+        vec3 col = albedoRGB * (pow(lit, 0.88) * 1.42 + fill);
+        gl_FragColor = vec4(col, 1.0);
+        return;
+      }
+
+      // ── OPTICAL FLAT (sun off — "full moon") ──
+      if (uMode == 1) {
+        float ao = 0.85 + 0.15 * max(0.0, dot(N, vec3(0.0, 0.3, 1.0)));
+        gl_FragColor = vec4(albedoRGB * ao * 1.05, 1.0);
+        return;
+      }
+
+      // ── THERMAL INSTANT / LUNATION ──
+      if (uMode == 2 || uMode == 3) {
+        float T  = surfaceTemp(N, S, A, rIdx);
+        float tn = (T - 25.0) / 375.0;
+        vec3  col = thermalRamp(tn);
+        col = applyIsotherms(col, T);
+        gl_FragColor = vec4(col, 1.0);
+        return;
+      }
+
+      // ── THERMAL DIURNAL MAX ──
+      if (uMode == 4) {
+        float cMax = sqrt(N.x * N.x + N.z * N.z);
+        float T = T_equilibrium(cMax, A);
+        if (T < 1.0) T = T_NIGHT_MIN;
+        // rocky terrain retains peak T slightly longer each rotation
+        T += rIdx * 6.0;
+        float tn = (T - 25.0) / 375.0;
+        vec3  col = thermalRamp(tn);
+        col = applyIsotherms(col, T);
+        gl_FragColor = vec4(col, 1.0);
+        return;
+      }
+
+      // ── THERMAL DIURNAL MIN ──
+      if (uMode == 5) {
+        float cMax = sqrt(N.x * N.x + N.z * N.z);
+        float psr = smoothstep(0.12, 0.02, cMax) * smoothstep(0.55, 0.85, abs(N.y));
+        float T   = mix(T_NIGHT_MIN, T_PSR, psr);
+        // rocky nightside stays warmer
+        T += rIdx * 14.0 * (1.0 - psr);
+        float tn = (T - 25.0) / 375.0;
+        vec3  col = thermalRamp(tn);
+        col = applyIsotherms(col, T);
+        gl_FragColor = vec4(col, 1.0);
+        return;
+      }
+
+      // ── PSR HIGHLIGHT (uMode == 6) ──
+      float cMax = sqrt(N.x * N.x + N.z * N.z);
+      float psr = smoothstep(0.12, 0.02, cMax) * smoothstep(0.50, 0.80, abs(N.y));
+      float lit = max(dot(N, S), 0.0);
+      vec3 base = albedoRGB * (0.15 * lit + 0.05);
+      vec3 psrCol = vec3(0.45, 0.92, 1.0);
+      gl_FragColor = vec4(mix(base, psrCol, psr), 1.0);
+    }
+  `
+});
+
+const moon = new THREE.Mesh(
+  new THREE.SphereGeometry(MOON_RADIUS, SEGMENTS, SEGMENTS),
+  moonMat
+);
+// Rotate so the texture's 0° longitude sits at world -Z (camera-facing
+// center). Paired with matching rotations on apolloGroup and graticule
+// in the animate loop so pins/lines stay locked to their surface features.
+moon.rotation.y = -Math.PI / 2;
+scene.add(moon);
+
+// ══════════════════════════════════════════════════════════════════════
+//  TEXTURE LOADING
+// ══════════════════════════════════════════════════════════════════════
+const loader = new THREE.TextureLoader();
+loader.crossOrigin = 'anonymous';
+
+function loadTexture(url, sRGB = true) {
+  return new Promise((ok, err) => {
+    loader.load(url,
+      t => {
+        if (sRGB) t.colorSpace = THREE.SRGBColorSpace;
+        t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        ok(t);
+      },
+      undefined, err);
+  });
+}
+
+async function fetchManifest() {
+  try {
+    const r = await fetch(MANIFEST_PATH, { cache: 'no-store' });
+    if (!r.ok) throw 0;
+    return await r.json();
+  } catch { return { textures: [] }; }
+}
+
+// JS mirror of shader albedo for the probe
+function albedoFromLuminance(L) { return 0.04 + 0.22 * L; }
+
+// Rotate a vector by angle around the Y axis (body-local rotation axis).
+function rotYVec(v, angle) {
+  const c = Math.cos(angle), s = Math.sin(angle);
+  return new THREE.Vector3(
+    v.x * c + v.z * s,
+    v.y,
+   -v.x * s + v.z * c
+  );
+}
+
+// Mirror of the shader's thermal pipeline so the probe readout matches
+// what the user sees on the surface. `rockIdx` estimated from albedo.
+function surfaceTempJS(N, S, A) {
+  const SIG = 0.95 * 5.67e-8, SOL = 1361;
+  const lag = moonMat.uniforms.uThermalLag.value || 0;
+  const Seff = rotYVec(S, -lag);
+  const c = N.dot(Seff);
+  const rockIdx = Math.max(0, Math.min(1, (A - 0.09) / (0.17 - 0.09))) * 0.7;
+  const Tday   = c > 0
+    ? Math.pow((1 - A) * SOL * c / SIG, 0.25) * (1 - rockIdx * 0.04 * (1 - Math.max(c, 0)))
+    : 0;
+  const Tnight = 95 + 105 * Math.max(0, 1 + Math.min(c, 0)) + rockIdx * 28;
+  const b = THREE.MathUtils.smoothstep(c, -0.03, 0.08);
+  return Tnight * (1 - b) + Tday * b;
+}
+
+// Subsurface temperature at depth. Diurnal thermal wave damps exponentially
+// with skin depth ~5 cm (Vasavada+ 2012 regolith properties). At 1 m the
+// regolith sits at the diurnal mean, which varies with latitude.
+function subsurfaceT(Tsurf, latRad, depthMeters) {
+  const SKIN = 0.05;
+  const T_mean_eq   = 220;
+  const T_mean_pole = 40;
+  const cL = Math.abs(Math.cos(latRad));
+  const T_mean = T_mean_eq * cL + T_mean_pole * (1 - cL);
+  const damp = Math.exp(-depthMeters / SKIN);
+  return T_mean + (Tsurf - T_mean) * damp;
+}
+
+async function applyAlbedo(url, label) {
+  try {
+    const tex = await loadTexture(url, true);
+    if (moonMat.uniforms.uAlbedoMap.value) {
+      moonMat.uniforms.uAlbedoMap.value.dispose();
+    }
+    moonMat.uniforms.uAlbedoMap.value = tex;
+    moonMat.uniforms.uHasAlbedo.value = 1.0;
+    document.getElementById('rd-tex').textContent = label;
+    // capture pixels for the probe
+    samplePixelsFromTexture(tex);
+  } catch (e) {
+    toast('FAILED TO LOAD: ' + url.split('/').pop());
+  }
+}
+
+let albedoCanvas = null, albedoCtx = null;
+function samplePixelsFromTexture(tex) {
+  const img = tex.image;
+  if (!img) return;
+  albedoCanvas = document.createElement('canvas');
+  albedoCanvas.width  = Math.min(img.width,  1024);
+  albedoCanvas.height = Math.min(img.height, 512);
+  albedoCtx = albedoCanvas.getContext('2d', { willReadFrequently: true });
+  albedoCtx.drawImage(img, 0, 0, albedoCanvas.width, albedoCanvas.height);
+}
+function sampleAlbedo(u, v) {
+  if (!albedoCtx) return 0.12;
+  const x = Math.min(albedoCanvas.width  - 1, Math.max(0, Math.floor(u * albedoCanvas.width)));
+  const y = Math.min(albedoCanvas.height - 1, Math.max(0, Math.floor((1 - v) * albedoCanvas.height)));
+  const p = albedoCtx.getImageData(x, y, 1, 1).data;
+  const L = (0.299 * p[0] + 0.587 * p[1] + 0.114 * p[2]) / 255;
+  return albedoFromLuminance(L);
+}
+
+async function bootstrap() {
+  const man = await fetchManifest();
+  const have = new Set(man.textures);
+
+  // enable / disable texture buttons based on what's actually on disk
+  document.querySelectorAll('[data-tex]').forEach(btn => {
+    if (!have.has(btn.dataset.tex)) btn.disabled = true;
+  });
+
+  // pick an initial albedo
+  let chosen = document.querySelector('[data-tex].active:not(:disabled)');
+  if (!chosen) chosen = document.querySelector('[data-tex]:not(:disabled)');
+
+  if (chosen) {
+    document.querySelectorAll('[data-tex]').forEach(b => b.classList.remove('active'));
+    chosen.classList.add('active');
+    state.textureKey = chosen.dataset.tex;
+    const label = chosen.dataset.tex.includes('2k.jpg') ? '2K · 2025' :
+                  chosen.dataset.tex.includes('1k.jpg') ? '1K · 2019' :
+                  chosen.dataset.tex.includes('4k')     ? '4K · hires' :
+                  chosen.dataset.tex.includes('8k')     ? '8K · hires' :
+                                                          chosen.dataset.tex;
+    await applyAlbedo(TEXTURE_DIR + chosen.dataset.tex, label);
+  } else {
+    toast('NASA DATA NOT FOUND · USING FALLBACK');
+    await applyAlbedo(FALLBACK_URL, 'fallback');
+  }
+
+  // load displacement — try highest-res first, fall back gracefully
+  const dispFile = DISP_CANDIDATES.find(f => have.has(f));
+  if (dispFile) {
+    try {
+      const tex = await loadTexture(TEXTURE_DIR + dispFile, false);
+      moonMat.uniforms.uDispMap.value = tex;
+      moonMat.uniforms.uHasDisp.value = 1.0;
+      if (tex.image) {
+        moonMat.uniforms.uTexelSize.value.set(
+          1 / tex.image.width, 1 / tex.image.height
+        );
+      }
+      // Pretty label: "LOLA LDEM 64ppd" / "LOLA LDEM 16ppd" / "LOLA LDEM 3ppd"
+      const ppd = dispFile.match(/ldem_(\d+)/);
+      const label = ppd
+        ? `LOLA LDEM ${ppd[1]}ppd`
+        : 'LOLA LDEM';
+      document.getElementById('rd-disp').textContent = label;
+    } catch (e) { console.warn('disp load failed', e); }
+  } else {
+    document.getElementById('rd-disp').textContent = 'none';
+  }
+
+  applyMode();
+  updateStatsReadout();
+  finishLoading();
+}
+
+function finishLoading() {
+  const el = document.getElementById('loading');
+  el.style.transition = 'opacity 0.8s';
+  el.style.opacity = '0';
+  setTimeout(() => { el.style.display = 'none'; }, 800);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  MODE RESOLUTION — maps UI state to shader uMode
+// ══════════════════════════════════════════════════════════════════════
+function resolveShaderMode() {
+  if (state.view === 'optical') {
+    return state.sunOn ? 0 : 1;
+  }
+  // thermal
+  if (!state.sunOn && (state.thermalSub === 'instant' || state.thermalSub === 'lunation')) {
+    // sun off + thermal instant/lunation doesn't make sense → use max
+    return 4;
+  }
+  return { instant: 2, lunation: 3, max: 4, min: 5, psr: 6 }[state.thermalSub] ?? 2;
+}
+
+const CAPTIONS = {
+  'optical:on':        'LROC WAC imagery on LOLA topography. Sun illuminates the near side; craters cast real shadows.',
+  'optical:off':       'Full moon view — all surface features visible at once with no shadows, regardless of the sun position.',
+  'thermal:instant':   'Real-time surface temperature from a radiative-equilibrium model, calibrated to Diviner observations.',
+  'thermal:instant-offsun': 'Sun off — showing diurnal maximum temperature (sun-independent).',
+  'thermal:lunation':  'Sun animates through a full lunar day. Watch the terminator sweep and the dayside heat up.',
+  'thermal:max':       'Maximum temperature each point reaches across a lunation. High-latitude craters stay cool even at noon.',
+  'thermal:min':       'Minimum temperature each point reaches. PSRs drop toward 40 K — cold traps for volatiles.',
+  'thermal:psr':       'Permanently shadowed regions in cyan. The coldest places in the inner solar system.',
+};
+
+function updateCaption() {
+  let key;
+  if (state.view === 'optical') {
+    key = 'optical:' + (state.sunOn ? 'on' : 'off');
+  } else if (!state.sunOn && (state.thermalSub === 'instant' || state.thermalSub === 'lunation')) {
+    key = 'thermal:instant-offsun';
+  } else {
+    key = 'thermal:' + state.thermalSub;
+  }
+  document.getElementById('caption').textContent = CAPTIONS[key] || '';
+}
+
+function updateUIVisibility() {
+  const isThermal = state.view === 'thermal';
+  document.body.classList.toggle('thermal', isThermal);
+
+  // sub-mode panels
+  document.getElementById('sub-optical').style.display = isThermal ? 'none' : '';
+  document.getElementById('sub-thermal').style.display = isThermal ? '' : 'none';
+
+  // bottom readouts
+  document.querySelectorAll('.opt-readout').forEach(el => el.style.display = isThermal ? 'none' : '');
+  document.querySelectorAll('.thm-readout').forEach(el => el.style.display = isThermal ? '' : 'none');
+  document.querySelectorAll('.thm-dependent').forEach(el => el.style.display = isThermal ? '' : 'none');
+
+  // sun-dependent controls — dim when sun off
+  const sunOff = !state.sunOn;
+  document.querySelectorAll('.sun-dependent').forEach(el =>
+    el.classList.toggle('disabled', sunOff));
+
+  // lunation rate only when in thermal-lunation-sun-on
+  const showLun = isThermal && state.thermalSub === 'lunation' && state.sunOn;
+  document.getElementById('cr-lunspeed').classList.toggle('hidden', !showLun);
+
+  // custom upload — optical only
+  document.getElementById('custom-wrap').style.display = isThermal ? 'none' : '';
+
+  document.getElementById('view-label').textContent = isThermal ? 'THERMAL' : 'OPTICAL';
+}
+
+function applyMode() {
+  moonMat.uniforms.uMode.value = resolveShaderMode();
+  updateUIVisibility();
+  updateCaption();
+  updateStatsReadout();
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  UI WIRING
+// ══════════════════════════════════════════════════════════════════════
+
+// view toggle (optical / thermal)
+document.querySelectorAll('[data-view]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-view]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.view = btn.dataset.view;
+    applyMode();
+  });
+});
+
+// thermal sub-mode
+document.querySelectorAll('[data-thermal]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-thermal]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.thermalSub = btn.dataset.thermal;
+    applyMode();
+  });
+});
+
+// optical resolution
+document.querySelectorAll('[data-tex]').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    if (btn.disabled) return;
+    document.querySelectorAll('[data-tex]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.textureKey = btn.dataset.tex;
+    const label = btn.dataset.tex.includes('2k.jpg') ? '2K · 2025' :
+                  btn.dataset.tex.includes('1k.jpg') ? '1K · 2019' :
+                  btn.dataset.tex.includes('4k')     ? '4K · hires' :
+                  btn.dataset.tex.includes('8k')     ? '8K · hires' :
+                                                        btn.dataset.tex;
+    await applyAlbedo(TEXTURE_DIR + btn.dataset.tex, label);
+  });
+});
+
+// sun switch
+const sunSwitch = document.getElementById('sun-switch');
+sunSwitch.addEventListener('click', () => {
+  state.sunOn = !state.sunOn;
+  sunSwitch.classList.toggle('on', state.sunOn);
+  document.getElementById('sun-state').textContent = state.sunOn ? 'ON' : 'OFF';
+  applyMode();
+});
+
+// sun direction sliders
+const sunLon = document.getElementById('sun-lon');
+const sunLat = document.getElementById('sun-lat');
+const sunDir = new THREE.Vector3();
+function updateSunFromSliders() {
+  const lonR = THREE.MathUtils.degToRad(+sunLon.value);
+  const latR = THREE.MathUtils.degToRad(+sunLat.value);
+  // World-space direction toward the sun. Paired with the moon's -π/2
+  // rotation so lon=0 puts the sun behind the camera (full moon) and
+  // lon=+90° puts it to camera's right (first quarter).
+  sunDir.set(
+     Math.sin(lonR) * Math.cos(latR),
+     Math.sin(latR),
+     Math.cos(lonR) * Math.cos(latR)
+  );
+  moonMat.uniforms.uSunDir.value.copy(sunDir);
+  const fmt  = v => (v >= 0 ? '+' : '-') + String(Math.abs(v)).padStart(2, '0') + '°';
+  const fmtL = v => (v >= 0 ? '+' : '-') + String(Math.abs(v)).padStart(3, '0') + '°';
+  document.getElementById('sun-lon-val').textContent = fmtL(+sunLon.value);
+  document.getElementById('sun-lat-val').textContent = fmt(+sunLat.value);
+  updateStatsReadout();
+}
+sunLon.addEventListener('input', updateSunFromSliders);
+sunLat.addEventListener('input', updateSunFromSliders);
+updateSunFromSliders();
+
+// lunation rate
+const lunSpd = document.getElementById('lun-speed');
+lunSpd.addEventListener('input', () => {
+  const s = +lunSpd.value;
+  const secondsPerDay = 300 * Math.pow(0.01, s / 100);
+  document.getElementById('lun-val').textContent = secondsPerDay.toFixed(0) + 's/day';
+});
+
+// terrain relief — disp slider controls both the shading bump magnitude
+// (fragment shader normal-mapping) AND the true vertex displacement when
+// 3D RELIEF is on. Defaults tuned so craters visibly bulge out on the
+// silhouette at the default setting.
+const disp        = document.getElementById('disp');
+const relief3Dchk = document.getElementById('chk-relief3d');
+function applyReliefFromSliders() {
+  const v = +disp.value / 5;                       // slider 0..10
+  moonMat.uniforms.uDispScale.value    = 0.0045 * v;
+  moonMat.uniforms.uVertexRelief.value = relief3Dchk.checked ? 0.022 * v : 0.0;
+  document.getElementById('disp-val').textContent = '×' + v.toFixed(1);
+}
+disp.addEventListener('input', applyReliefFromSliders);
+relief3Dchk.addEventListener('change', applyReliefFromSliders);
+applyReliefFromSliders();  // sync initial
+
+// camera spin
+let rotSpeed = 0;
+const rot = document.getElementById('rot');
+rot.addEventListener('input', () => {
+  rotSpeed = (+rot.value) * 0.0004;
+  document.getElementById('rot-val').textContent =
+    (+rot.value === 0) ? 'FROZEN' : '×' + (+rot.value).toFixed(0);
+});
+
+// camera distance (two-way sync with orbit-controls zoom)
+const distSlider = document.getElementById('dist');
+const distVal    = document.getElementById('dist-val');
+let _distSyncing = false;  // guard to prevent feedback loops
+function applyDistanceFromSlider() {
+  const d = (+distSlider.value) / 100;
+  const dir = camera.position.clone().normalize();
+  if (dir.lengthSq() < 1e-6) dir.set(0, 0.1, 1).normalize();
+  _distSyncing = true;
+  camera.position.copy(dir.multiplyScalar(d));
+  controls.update();
+  _distSyncing = false;
+  distVal.textContent = d.toFixed(1) + ' R☾';
+}
+distSlider.addEventListener('input', applyDistanceFromSlider);
+controls.addEventListener('change', () => {
+  if (_distSyncing) return;
+  const d = camera.position.length();
+  distSlider.value = Math.round(d * 100);
+  distVal.textContent = d.toFixed(1) + ' R☾';
+});
+
+// toggles
+document.getElementById('chk-stars').addEventListener('change', e => stars.visible = e.target.checked);
+document.getElementById('chk-grid').addEventListener('change', e => graticule.visible = e.target.checked);
+document.getElementById('chk-apollo').addEventListener('change', e => apolloGroup.visible = e.target.checked);
+document.getElementById('chk-iso').addEventListener('change', e =>
+  moonMat.uniforms.uIsotherms.value = e.target.checked ? 1.0 : 0.0);
+
+// custom upload (optical only)
+document.getElementById('custom-texture').addEventListener('change', e => {
+  const f = e.target.files?.[0];
+  if (!f) return;
+  const url = URL.createObjectURL(f);
+  applyAlbedo(url, 'CUSTOM · ' + f.name.slice(0, 16));
+  document.querySelectorAll('[data-tex]').forEach(b => b.classList.remove('active'));
+});
+
+// session id + clock
+document.getElementById('session-id').textContent = 'L-' + String(Math.floor(Math.random() * 9000) + 1000);
+setInterval(() => {
+  const d = new Date();
+  document.getElementById('utc-time').textContent =
+    String(d.getUTCHours()).padStart(2, '0') + ':' +
+    String(d.getUTCMinutes()).padStart(2, '0') + ':' +
+    String(d.getUTCSeconds()).padStart(2, '0');
+}, 1000);
+
+// ── Collapsible panels (tap the title to toggle) ──────────────────────
+// Default: expanded on desktop, collapsed on narrow viewports. We only
+// set the initial state from viewport width — once the user has touched
+// either title, their explicit choice wins on subsequent resizes.
+(function setupCollapsiblePanels() {
+  const panels = ['panel-left', 'panel-right'].map(id => document.getElementById(id));
+  panels.forEach(p => {
+    const title = p.querySelector('.panel-title');
+    title.setAttribute('role', 'button');
+    title.setAttribute('tabindex', '0');
+    title.setAttribute('aria-label', 'Toggle panel');
+    const toggle = (ev) => {
+      ev.stopPropagation();
+      p.classList.toggle('collapsed');
+    };
+    title.addEventListener('click', toggle);
+    title.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(e); }
+    });
+  });
+  if (window.innerWidth <= 620) {
+    panels.forEach(p => p.classList.add('collapsed'));
+  }
+})();
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  HOVER PROBE
+// ══════════════════════════════════════════════════════════════════════
+const raycaster = new THREE.Raycaster();
+const mouseNDC = new THREE.Vector2();
+const probeEl = document.getElementById('probe');
+
+renderer.domElement.addEventListener('pointermove', (ev) => {
+  mouseNDC.x =  (ev.clientX / innerWidth)  * 2 - 1;
+  mouseNDC.y = -(ev.clientY / innerHeight) * 2 + 1;
+  raycaster.setFromCamera(mouseNDC, camera);
+  const hits = raycaster.intersectObject(moon, false);
+  if (!hits.length) { probeEl.classList.remove('show'); return; }
+
+  const h = hits[0];
+  const u = h.uv.x, v = h.uv.y;
+  const lon = (u - 0.5) * 360;
+  const lat = (v - 0.5) * 180;
+
+  const bodyPoint = h.point.clone().applyQuaternion(moon.quaternion.clone().invert());
+  const N = bodyPoint.clone().normalize();
+  const A = sampleAlbedo(u, v);
+
+  // position probe near cursor
+  const x = Math.min(innerWidth  - 200, ev.clientX + 18);
+  const y = Math.min(innerHeight - 100, ev.clientY + 18);
+  probeEl.style.left = x + 'px';
+  probeEl.style.top  = y + 'px';
+  probeEl.classList.add('show');
+
+  const fmtLat = v => (v >= 0 ? 'N ' : 'S ') + Math.abs(v).toFixed(1) + '°';
+  const fmtLon = v => (v >= 0 ? 'E ' : 'W ') + Math.abs(v).toFixed(1) + '°';
+  document.getElementById('probe-coord').textContent = `${fmtLat(lat)} · ${fmtLon(lon)}`;
+
+  const tEl = document.getElementById('probe-t');
+  const extraEl = document.getElementById('probe-extra');
+  const depthEl = document.getElementById('probe-depth');
+
+  if (state.view === 'thermal') {
+    // compute temperature for the current mode
+    let T;
+    const mode = resolveShaderMode();
+    if (mode === 4) {          // diurnal max
+      const cMax = Math.sqrt(N.x * N.x + N.z * N.z);
+      T = cMax > 0 ? Math.pow((1 - A) * 1361 * cMax / (0.95 * 5.67e-8), 0.25) : 95;
+    } else if (mode === 5) {   // diurnal min
+      const cMax = Math.sqrt(N.x * N.x + N.z * N.z);
+      const psr = THREE.MathUtils.smoothstep(cMax, 0.12, 0.02) * THREE.MathUtils.smoothstep(Math.abs(N.y), 0.55, 0.85);
+      T = 95 * (1 - psr) + 40 * psr;
+    } else {                   // instant / lunation / psr-highlight-base
+      const S = sunDir.clone().applyQuaternion(moon.quaternion.clone().invert());
+      T = surfaceTempJS(N, S, A);
+    }
+    tEl.innerHTML = T.toFixed(0) + ' <span class="unit">K</span>';
+    tEl.classList.toggle('cold', T < 180);
+    const C_ = T - 273.15, F = C_ * 9/5 + 32;
+    extraEl.textContent = `${C_.toFixed(0)} °C · ${F.toFixed(0)} °F · albedo ${A.toFixed(2)}`;
+
+    // subsurface depth profile
+    const latRad = THREE.MathUtils.degToRad(lat);
+    const setPd = (id, d) => {
+      document.getElementById(id).textContent =
+        subsurfaceT(T, latRad, d).toFixed(0) + ' K';
+    };
+    setPd('pd-0',   0.0);
+    setPd('pd-1',   0.01);
+    setPd('pd-10',  0.10);
+    setPd('pd-100', 1.00);
+    depthEl.style.display = '';
+  } else {
+    // optical mode — show albedo only
+    tEl.innerHTML = `A=${A.toFixed(2)}`;
+    tEl.classList.remove('cold');
+    const region = classifyRegion(A);
+    extraEl.textContent = region;
+    depthEl.style.display = 'none';
+  }
+});
+renderer.domElement.addEventListener('pointerleave', () => probeEl.classList.remove('show'));
+
+function classifyRegion(A) {
+  if (A < 0.09) return 'dark maria (basalt)';
+  if (A < 0.13) return 'mare basalt';
+  if (A < 0.18) return 'highland regolith';
+  return 'bright highland';
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  STATS READOUT (thermal bottom panel)
+// ══════════════════════════════════════════════════════════════════════
+function updateStatsReadout() {
+  if (state.view !== 'thermal') return;
+
+  const mode = resolveShaderMode();
+  let Tmax, Tmin, sub = '—';
+
+  const lonVal = +sunLon.value, latVal = +sunLat.value;
+  const fmtLat = v => (v >= 0 ? 'N' : 'S') + Math.abs(v).toFixed(0) + '°';
+  const fmtLon = v => (v >= 0 ? 'E' : 'W') + Math.abs(v).toFixed(0) + '°';
+
+  if (mode === 2 || mode === 3) {
+    // instant / lunation — Tmax depends on sun latitude (approximately 386*cos(lat)^0.25)
+    Tmax = Math.pow((1 - 0.12) * 1361 * Math.cos(THREE.MathUtils.degToRad(latVal)) / (0.95 * 5.67e-8), 0.25);
+    Tmin = 95;
+    sub = `${fmtLat(latVal)} · ${fmtLon(lonVal)}`;
+  } else if (mode === 4) {
+    Tmax = 394;
+    Tmin = 95;
+  } else if (mode === 5) {
+    Tmax = 95;
+    Tmin = 40;
+  } else {
+    Tmax = 394; Tmin = 40;
+  }
+
+  document.getElementById('rd-tmax').innerHTML = Math.round(Tmax) + '<span class="unit">K</span>';
+  document.getElementById('rd-tmin').innerHTML = Math.round(Tmin) + '<span class="unit">K</span>';
+  document.getElementById('rd-sub').textContent = sub;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  ANIMATION LOOP
+// ══════════════════════════════════════════════════════════════════════
+let lunTime = 0;
+function animate() {
+  requestAnimationFrame(animate);
+
+  // auto-sweep sun in thermal-lunation mode
+  if (state.view === 'thermal' && state.thermalSub === 'lunation' && state.sunOn) {
+    const s = +lunSpd.value;
+    const secondsPerDay = 300 * Math.pow(0.01, s / 100);
+    lunTime += (1/60) / secondsPerDay;
+    const lon = ((lunTime * 360) % 360) - 180;
+    sunLon.value = Math.round(lon);
+    updateSunFromSliders();
+  }
+
+  moon.rotation.y         += rotSpeed;
+  graticule.rotation.y    = moon.rotation.y;
+  apolloGroup.rotation.y  = moon.rotation.y;
+
+  if (state.view === 'optical') {
+    document.getElementById('rd-alt').innerHTML =
+      camera.position.length().toFixed(1) + '<span class="unit">R☾</span>';
+  }
+
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+bootstrap();
+</script>
+</body>
+</html>
